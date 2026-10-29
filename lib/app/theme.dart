@@ -27,8 +27,10 @@ ThemeData buildTheme(Brightness brightness) {
     ),
     cardTheme: CardThemeData(
       elevation: 0,
+      color: scheme.surface,
+      surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -48,7 +50,7 @@ ThemeData buildTheme(Brightness brightness) {
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: scheme.surface,
       indicatorColor: scheme.primary.withValues(alpha: .17),
-      height: 76,
+      height: 72,
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

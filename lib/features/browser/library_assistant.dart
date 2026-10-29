@@ -221,8 +221,8 @@ const assistantScript = r'''
   const s = {cards: new Map(), roots: new WeakSet(), ages: {}, saved: new Set(), pages: {},
     minDays: null, includeUndated: true, minAds: null, timer: null, enabled: true, busy: null};
   const norm = (t) => (t || '').normalize ? (t || '').normalize('NFC') : (t || '');
-  // Ads sharing this creative, as Meta prints it on the card (1 when absent).
-  const ads = (c) => c.data.variations || 1;
+  // Count is known only when explicitly printed by Meta.
+  const ads = (c) => Number.isInteger(c.data.variations) && c.data.variations > 0 ? c.data.variations : null;
   // The app bridge may appear after this script; queue early messages.
   const queue = [];
   const bridge = () => window.flutter_inappwebview && window.flutter_inappwebview.callHandler;
@@ -359,9 +359,10 @@ const assistantScript = r'''
     }
     b.appendChild(button('copy', 'copy', 'Copiar link do anúncio', '', 'background:#eef0f3;color:#1c1e21;'));
     b.appendChild(button('share', 'share', 'Compartilhar anúncio', '', 'background:#eef0f3;color:#1c1e21;'));
-    const n = s.cards.has(id) ? ads(s.cards.get(id)) : 1;
+    const n = s.cards.has(id) ? ads(s.cards.get(id)) : null;
     const parts = [];
     if (age != null) parts.push(age < 0 ? 'data futura' : age === 1 ? '1 dia' : age + ' dias');
+    else parts.push('sem data');
     if (n > 1) parts.push(n + ' anúncios');
     if (parts.length) {
       const pill = document.createElement('span');
@@ -473,7 +474,8 @@ const assistantScript = r'''
       const age = s.ages[id];
       let hide = false;
       if (s.minDays != null) hide = age == null ? !s.includeUndated : age < s.minDays;
-      if (s.minAds != null && ads(c) < s.minAds) hide = true;
+      const count = ads(c);
+      if (s.minAds != null && (count == null || count < s.minAds)) hide = true;
       c.root.style.display = hide ? 'none' : c.display;
       badge(c.root, id);
     }

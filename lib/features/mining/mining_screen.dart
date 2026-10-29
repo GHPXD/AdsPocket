@@ -3,6 +3,7 @@ import '../../app/app_controller.dart';
 import '../../core/longevity.dart';
 import '../../core/text_extraction.dart';
 import '../../core/widgets.dart';
+import '../../core/pocket_grid.dart';
 import '../../data/offer.dart';
 import 'compare_screen.dart';
 import 'mining_filter.dart';
@@ -245,12 +246,10 @@ class _MiningScreenState extends State<MiningScreen> {
                             : null,
                       ),
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
+                  : PocketCollectionGrid(
                       itemCount: items.length,
-                      separatorBuilder: (_, i) => const SizedBox(height: 12),
-                      itemBuilder: (context, i) {
-                        final o = items[i];
+                      itemBuilder: (context, index) {
+                        final o = items[index];
                         return OfferCard(
                           offer: o,
                           today: today,

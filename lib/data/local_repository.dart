@@ -3,11 +3,12 @@ import 'package:sqflite/sqflite.dart';
 import '../core/meta_ads_library_url_builder.dart';
 import 'models.dart';
 import 'offer.dart';
+import '../features/research/research_engine.dart';
 
 class LocalRepository {
   LocalRepository(this.db);
   final Database db;
-  static const schemaVersion = 2;
+  static const schemaVersion = 3;
 
   static Future<LocalRepository> open({
     DatabaseFactory? factory,
@@ -22,6 +23,7 @@ class LocalRepository {
         onCreate: (db, version) async {
           await createV1(db);
           await _migrateToV2(db);
+          await _migrateToV3(db);
         },
         // sqflite runs onUpgrade inside a transaction: a failure rolls back
         // every step and keeps the v1 data untouched.
@@ -30,10 +32,35 @@ class LocalRepository {
             throw StateError('Migração de banco não suportada.');
           }
           if (oldVersion < 2) await _migrateToV2(db);
+          if (oldVersion < 3) await _migrateToV3(db);
         },
       ),
     );
     return LocalRepository(db);
+  }
+
+  /// Additive migration; existing references remain untouched.
+  static Future<void> _migrateToV3(DatabaseExecutor db) => db.execute(
+    'CREATE TABLE research (id TEXT PRIMARY KEY, kind TEXT NOT NULL, data TEXT NOT NULL)',
+  );
+
+  Future<List<ResearchRecord>> research() async => [
+    for (final row in await db.query('research'))
+      ResearchRecord.fromJson(
+        jsonDecode(row['data'] as String) as Map<String, dynamic>,
+      ),
+  ];
+  Future<void> saveResearch(ResearchRecord record) async {
+    record.validate();
+    await db.insert('research', {
+      'id': record.id,
+      'kind': record.kind.name,
+      'data': jsonEncode(record.toJson()),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteResearch(String id) async {
+    await db.delete('research', where: 'id = ?', whereArgs: [id]);
   }
 
   /// Schema shipped with 1.0.0. Kept verbatim so migrations are testable.
@@ -213,6 +240,7 @@ class LocalRepository {
     List<Bookmark> bookmarks,
     List<SearchHistory> history, [
     List<Offer> offers = const [],
+    List<ResearchRecord> research = const [],
   ]) async {
     var added = 0;
     await db.transaction((tx) async {
@@ -253,6 +281,16 @@ class LocalRepository {
           'visited_at': h.visitedAt.toIso8601String(),
           'data': jsonEncode(h.toJson()),
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      for (final r in research) {
+        r.validate();
+        if (await inserted('research', {
+          'id': r.id,
+          'kind': r.kind.name,
+          'data': jsonEncode(r.toJson()),
+        })) {
+          added++;
+        }
       }
       await tx.rawDelete(
         'DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY visited_at DESC LIMIT 500)',

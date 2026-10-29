@@ -525,7 +525,7 @@ class SettingsScreen extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Importar backup?'),
         content: Text(
-          '${backup.bookmarks.length} favoritos, ${backup.offers.length} referências da Mineração e ${backup.history.length} pesquisas serão mesclados. Registros existentes serão preservados.\n\nDeseja também restaurar as configurações?',
+          '${backup.bookmarks.length} favoritos, ${backup.offers.length} referências da Mineração e ${backup.history.length} pesquisas e ${backup.research.length} registros 360° serão mesclados. Registros existentes serão preservados.\n\nDeseja também restaurar as configurações?',
         ),
         actions: [
           TextButton(

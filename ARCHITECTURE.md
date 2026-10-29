@@ -1,12 +1,18 @@
 # Arquitetura
 
+## Adições da 1.2.0
+
+`core/pocket_icon.dart` desenha a identidade vetorial; `pocket_grid.dart` fornece grades responsivas. `features/research/research_engine.dart` contém catálogo, combinações, provedores, detecção, validação dos novos registros e agrupamento; `research_screen.dart` contém os fluxos de pesquisa. Catálogo versionado em `assets/knowledge`, reconstruível por `tool/import_research_catalog.py`.
+
+SQLite v3 adiciona `research` por migração aditiva; backup v3 aceita versões anteriores. O controlador carrega pesquisas e integra exportação/mesclagem. Não há nova dependência ou servidor. [Modelo de evidência](EVIDENCE_MODEL.md) e [Detecção](TECHNOLOGY_DETECTION.md) detalham contratos e limites.
+
 ## Estrutura
 
 ```text
 lib/
   main.dart                       inicialização e falha recuperável de armazenamento
   app/
-    app.dart                      MaterialApp, 5 abas (IndexedStack), back Android, fila de compartilhamento
+    app.dart                      MaterialApp, 4 abas (IndexedStack), back Android, fila de compartilhamento
     app_controller.dart           estado global (ChangeNotifier), sessão, casos de uso locais, Tabs
     theme.dart                    temas Material 3
   core/
@@ -19,8 +25,8 @@ lib/
   data/
     models.dart                   Bookmark, SearchHistory, UserSettings
     offer.dart                    Offer (Mineração), PriceRange, OpportunityScore
-    local_repository.dart         SQLite v2 e migração
-    backup_service.dart           JSON v1/v2, CSV, política para ZIP
+    local_repository.dart         SQLite v3 e migrações aditivas
+    backup_service.dart           JSON v1/v2/v3, CSV, política para ZIP
   features/
     explore/                      pesquisa, filtros, atalhos, retomada
     browser/                      WebView, toolbar, modos, imersivo, erros, assistente (library_assistant.dart)

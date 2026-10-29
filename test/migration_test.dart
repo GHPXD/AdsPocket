@@ -83,7 +83,7 @@ void main() {
         factory: databaseFactoryFfi,
         path: path,
       );
-      expect(await repo.db.getVersion(), 2);
+      expect(await repo.db.getVersion(), LocalRepository.schemaVersion);
       final all = {for (final b in await repo.bookmarks()) b.id: b};
       expect(all, hasLength(3));
 

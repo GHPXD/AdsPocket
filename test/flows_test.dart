@@ -357,6 +357,8 @@ void main() {
   ) async {
     await tester.pumpWidget(AdsPocketApp(controller: app, enableNative: false));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Filtros de pesquisa'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Todas as mídias'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Vídeo').last);

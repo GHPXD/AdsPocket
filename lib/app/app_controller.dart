@@ -10,8 +10,9 @@ import '../data/backup_service.dart';
 import '../data/local_repository.dart';
 import '../data/models.dart';
 import '../data/offer.dart';
+import '../features/research/research_engine.dart';
 
-const appVersion = '1.1.0';
+const appVersion = '1.2.0';
 
 /// Tab indexes of the app shell.
 abstract final class Tabs {
@@ -29,6 +30,7 @@ class AppController extends ChangeNotifier {
   List<Bookmark> bookmarks = [];
   List<SearchHistory> history = [];
   List<Offer> offers = [];
+  List<ResearchRecord> research = [];
   int tab = Tabs.explore;
   Uri currentUrl = MetaAdsLibraryUrlBuilder.home;
 
@@ -80,6 +82,7 @@ class AppController extends ChangeNotifier {
     bookmarks = await repository.bookmarks();
     history = await repository.history();
     offers = await repository.offers();
+    research = await repository.research();
     notifyListeners();
   }
 
@@ -302,7 +305,17 @@ class AppController extends ChangeNotifier {
       : offers.where((o) => o.pageId == pageId).toList();
 
   String exportBackup() =>
-      BackupService.encode(bookmarks, history, settings, offers);
+      BackupService.encode(bookmarks, history, settings, offers, research);
+  Future<void> saveResearch(ResearchRecord record) async {
+    await repository.saveResearch(record);
+    await refresh();
+  }
+
+  Future<void> deleteResearch(String id) async {
+    await repository.deleteResearch(id);
+    await refresh();
+  }
+
   String exportOffersCsv() => CsvExport.offers(offers, CivilDate.today());
   String exportBookmarksCsv() => CsvExport.bookmarks(bookmarks);
 
@@ -314,6 +327,7 @@ class AppController extends ChangeNotifier {
       backup.bookmarks,
       backup.history,
       backup.offers,
+      backup.research,
     );
     if (restoreSettings) await updateSettings(backup.settings);
     await refresh();

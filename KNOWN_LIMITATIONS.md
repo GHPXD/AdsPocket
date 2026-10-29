@@ -1,4 +1,13 @@
-# Limitações reais — 1.1.0
+# Limitações reais — 1.2.0
+
+## Pesquisa 360° — 1.2.0
+
+- Base importada da transcrição fornecida; PDFs originais não conferidos. Página exata desconhecida, intervalos preservados. Classificações e promessas dos materiais não são fatos estatísticos.
+- Fontes externas são navegação assistida; nenhuma API de métricas conectada. Relatórios CSV de terceiros e radares permanecem no roadmap.
+- Detectores analisam domínio e conteúdo fornecido localmente. Marcadores de tecnologia são prováveis; não há crawler ou confirmação de vendas.
+- Dossiês/evidências são registros iniciais com vínculos e notas. Não há score multifonte, similaridade visual ou análise automática de funil.
+- Preço/idioma/nicho são critérios auxiliares. Não são filtros oficiais da Meta.
+- A suíte live da Meta da 1.1.0 é evidência histórica; não foi repetida nesta entrega. Validação física permanece pendente.
 
 ## Site externo (Meta)
 
@@ -12,7 +21,7 @@
 ## Assistente da Biblioteca
 
 - Funciona lendo o **texto visível** dos cards ("Library ID", "Started running on"/"Veiculação iniciada em", "Active", "Sponsored"). Não usa classes CSS nem APIs, mas depende das palavras que a Meta exibe em inglês ou português. Se a Meta mudar o layout ou os textos, os selos podem não aparecer; a navegação normal continua funcionando e o assistente pode ser desligado.
-- A quantidade de anúncios é o "N ads use this creative and text" que a Meta imprime no card (anúncios ativos com o mesmo criativo e texto). Cards sem esse texto contam como 1. Não é o total de anúncios do anunciante; esse total aparece como "~N na Meta" na Página dele.
+- A quantidade de anúncios é o "N ads use this creative and text" que a Meta imprime no card (anúncios ativos com o mesmo criativo e texto). Cards sem esse texto têm quantidade desconhecida e são excluídos quando um mínimo de quantidade está ativo. Não é o total de anúncios do anunciante; esse total aparece como "~N na Meta" na Página dele.
 - Os filtros de dias e quantidade ocultam cards **já carregados**. Ele não muda a consulta feita à Meta. A contagem "~N na Meta" é o número exibido pela Meta para a busca/Página, não um cálculo do app.
 - A auto-rolagem é feita na sua sessão, em ritmo de ~1 passo por segundo, e para no alvo, no fim da lista ou após 300 passos. Rolagem automática contínua pode ser interpretada pela Meta como uso automatizado; use com moderação.
 - Validado no emulador Android 15 (WebView 124) com a Meta em inglês e em português (pt-BR). O botão **Página** e o modo Feed foram validados só em português; os rótulos em inglês ("See ad details", "About the advertiser") estão incluídos, mas não foram testados ao vivo.
@@ -52,16 +61,16 @@
 
 ## Arquivos e backup
 
-- JSON v2 inclui favoritos, Mineração, histórico e ajustes; **não inclui imagens** (o campo da imagem é removido). Importa backups v1 e v2, valida tudo antes e nunca sobrescreve registros existentes.
+- JSON v3 inclui favoritos, Mineração, histórico, ajustes e pesquisas; **não inclui imagens** (o campo da imagem é removido). Importa backups v1, v2 e v3, valida tudo antes e nunca sobrescreve registros existentes.
 - Backup ZIP com imagens **não está implementado**. Foi preparada e testada a política de validação de entradas (`ArchivePolicy`); a exportação/importação ZIP fica para uma próxima versão.
 - CSV usa `;` e UTF-8 com BOM para abrir em planilhas em português. Valores iniciados por `= + - @` recebem apóstrofo.
 - Imagens: PNG/JPEG/WebP, até 15 MB e 40 megapixels.
 
 ## Distribuição
 
-- O workflow do GitHub Actions foi criado, mas **não foi executado** nesta sessão (nenhum push foi feito). Nenhuma release foi publicada.
+- O workflow existente foi preservado e compila o APK em pushes na `main`. Os resultados remotos devem ser conferidos no GitHub Actions; a validação local não confirma aprovação do CI.
 - Sem os secrets de assinatura, o CI assina com a chave de debug do runner, diferente da chave local. Instalar esse APK sobre um build local exige desinstalar antes (perde os dados locais). Para atualizações contínuas, configure `ADSPOCKET_KEYSTORE_BASE64`, `ADSPOCKET_KEYSTORE_PASSWORD`, `ADSPOCKET_KEY_ALIAS` e `ADSPOCKET_KEY_PASSWORD`.
-- O APK local da 1.1.0 é assinado com a mesma chave de desenvolvimento da 1.0.0 e atualiza sem desinstalar. Trocar depois para uma chave de produção exigirá uma desinstalação única.
+- O APK local da 1.2.0 é assinado com a mesma chave de desenvolvimento da 1.0.0 e atualiza sem desinstalar. Trocar depois para uma chave de produção exigirá uma desinstalação única.
 - Validação em aparelho físico (Galaxy S23 Ultra) pendente: nenhum aparelho físico estava conectado. O emulador x86_64 com GPU por software não representa desempenho real.
 - O ML Kit aumentou o APK release de 54 MB (1.0.0) para 87 MB e acrescentou a permissão `ACCESS_NETWORK_STATE` (dependência do ML Kit; o app não a usa para coletar dados).
 - O OCR com ML Kit real ainda não foi exercitado com um print real no aparelho; o parser e a tela foram testados no host com um motor de OCR substituto.

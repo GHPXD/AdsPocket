@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/meta_ads_library_url_builder.dart';
 import '../core/native_bridge.dart';
 import '../core/widgets.dart';
+import '../core/pocket_icon.dart';
 import '../data/models.dart';
 import '../features/browser/browser_screen.dart';
 import '../features/explore/explore_screen.dart';
@@ -249,23 +250,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 },
                 destinations: const [
                   NavigationDestination(
-                    icon: Icon(Icons.explore_outlined),
-                    selectedIcon: Icon(Icons.explore_rounded),
+                    icon: PocketIcon(PocketGlyph.explore),
+                    selectedIcon: PocketIcon(PocketGlyph.explore),
                     label: 'Explorar',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.public_outlined),
-                    selectedIcon: Icon(Icons.public_rounded),
+                    icon: PocketIcon(PocketGlyph.library),
+                    selectedIcon: PocketIcon(PocketGlyph.library),
                     label: 'Biblioteca',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.bookmarks_outlined),
-                    selectedIcon: Icon(Icons.bookmarks_rounded),
+                    icon: PocketIcon(PocketGlyph.saved),
+                    selectedIcon: PocketIcon(PocketGlyph.saved),
                     label: 'Salvos',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.tune_outlined),
-                    selectedIcon: Icon(Icons.tune_rounded),
+                    icon: PocketIcon(PocketGlyph.settings),
+                    selectedIcon: PocketIcon(PocketGlyph.settings),
                     label: 'Ajustes',
                   ),
                 ],

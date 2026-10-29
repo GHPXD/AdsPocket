@@ -1,4 +1,10 @@
-# Funcionalidades — versão 1.1.0
+# Funcionalidades — versão 1.2.0
+
+## Novidades da 1.2.0
+
+Explorar minimalista com filtros recolhidos, ícones próprios e grids responsivos. Pesquisa 360° reúne taxonomia, 449 expressões com origem, construtor, dez presets, pacotes locais com JSON, dez fontes assistidas, checkouts/tecnologias, dossiês/evidências e agrupamento conservador. Leia [Método](MINING_METHODOLOGY.md), [Palavras-chave](MINING_KEYWORDS.md) e [Fontes](MINING_SOURCES.md).
+
+Quantidade ausente permanece desconhecida e não passa em filtro mínimo de quantidade. Datas ausentes seguem a preferência existente. Recursos da 1.1.0 abaixo são preservados; suas validações live pertencem àquela execução.
 
 Legenda: **Implementado** = código entregue e coberto por teste automatizado. Validações em aparelho real e no site da Meta estão em [TESTING.md](TESTING.md).
 
@@ -93,8 +99,8 @@ Legenda: **Implementado** = código entregue e coberto por teste automatizado. V
 
 | Recurso | Estado |
 |---|---|
-| SQLite v2 com migração transacional a partir da v1 | Implementado |
-| Backup JSON v2 (favoritos, Mineração, histórico, ajustes); importa v1 e v2; mescla sem sobrescrever | Implementado |
+| SQLite v3 com migrações aditivas a partir da v1/v2 | Implementado |
+| Backup JSON v3 (favoritos, Mineração, histórico, ajustes, pesquisas); importa v1, v2 e v3; mescla sem sobrescrever | Implementado |
 | Exportação CSV (Mineração e favoritos), `;`, UTF-8 com BOM, proteção contra fórmulas | Implementado |
 | Backup ZIP com imagens | **Preparado**: política de validação de entradas (caminhos, duplicatas, tamanhos) testada; exportação/importação ZIP ainda não implementada |
 

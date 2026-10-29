@@ -4,6 +4,7 @@ import '../../app/app_controller.dart';
 import '../../core/meta_ads_library_url_builder.dart';
 import '../../core/native_bridge.dart';
 import '../../core/widgets.dart';
+import '../../core/pocket_grid.dart';
 import '../../data/models.dart';
 import '../../data/offer.dart';
 import '../mining/offer_widgets.dart';
@@ -146,11 +147,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                           'Salve anunciantes, pesquisas e links enquanto explora. Suas referências ficam só neste aparelho.',
                     ),
                   )
-                : ListView.separated(
+                : SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
-                    itemCount: items.length,
-                    separatorBuilder: (_, i) => const SizedBox(height: 12),
-                    itemBuilder: (context, i) => _card(items[i], colors),
+                    child: PocketGrid(
+                      minWidth: 220,
+                      children: [for (final item in items) _card(item, colors)],
+                    ),
                   ),
           ),
         ],
@@ -243,7 +245,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                     Pill(
                       '${local.length} salvos no AdsPocket${interesting > 0 ? ' · $interesting interessantes' : ''}',
                     ),
-                  for (final t in b.tags.take(4)) Pill(t),
+                  for (final t in b.tags.take(2)) Pill(t),
                 ],
               ),
               if (b.notes.isNotEmpty) ...[

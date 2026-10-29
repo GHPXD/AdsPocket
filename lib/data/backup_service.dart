@@ -3,6 +3,7 @@ import '../core/longevity.dart';
 import '../core/meta_ads_library_url_builder.dart';
 import 'models.dart';
 import 'offer.dart';
+import '../features/research/research_engine.dart';
 
 class BackupData {
   const BackupData(
@@ -10,21 +11,24 @@ class BackupData {
     this.history,
     this.settings, [
     this.offers = const [],
+    this.research = const [],
   ]);
   final List<Bookmark> bookmarks;
   final List<SearchHistory> history;
   final UserSettings settings;
   final List<Offer> offers;
+  final List<ResearchRecord> research;
 }
 
 class BackupService {
   static const maxBytes = 5 * 1024 * 1024;
-  static const version = 2;
+  static const version = 3;
   static String encode(
     List<Bookmark> bookmarks,
     List<SearchHistory> history,
     UserSettings settings, [
     List<Offer> offers = const [],
+    List<ResearchRecord> research = const [],
   ]) {
     final result = const JsonEncoder.withIndent('  ').convert({
       'app': 'AdsPocket',
@@ -38,6 +42,10 @@ class BackupService {
       'offers': offers.map((o) => o.toJson()..['imageFile'] = null).toList(),
       'history': history.map((h) => h.toJson()).toList(),
       'settings': settings.toJson(),
+      'research': research.map((r) {
+        r.validate();
+        return r.toJson();
+      }).toList(),
     });
     if (utf8.encode(result).length > maxBytes) {
       throw const FormatException('O backup ultrapassa 5 MB.');
@@ -59,6 +67,11 @@ class BackupService {
       final bs = j['bookmarks'] as List;
       final hs = j['history'] as List;
       final os = v >= 2 ? j['offers'] as List : const [];
+      final rs = v >= 3 ? j['research'] as List : const [];
+      if (rs.length > 10000) throw const FormatException();
+      final research = rs
+          .map((r) => ResearchRecord.fromJson(r as Map<String, dynamic>))
+          .toList();
       if (bs.length > 10000 || hs.length > 500 || os.length > 10000) {
         throw const FormatException();
       }
@@ -121,10 +134,11 @@ class BackupService {
         history,
         settings,
         offers,
+        research,
       );
     } catch (_) {
       throw const FormatException(
-        'Backup inválido. Use um JSON AdsPocket (versão 1 ou 2), com até 5 MB. Nenhum dado foi importado.',
+        'Backup inválido. Use um JSON AdsPocket (versão 1, 2 ou 3), com até 5 MB. Nenhum dado foi importado.',
       );
     }
   }

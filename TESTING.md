@@ -1,4 +1,29 @@
-# Validação — 1.1.0
+# Validação — 1.2.0+3
+
+Data: 29/10/2026. Windows, Flutter 3.47.2/Dart 3.13.2, Java 21; emulador Android 15 `WeSyncAd`. Nenhum aparelho físico conectado.
+
+| Verificação | Resultado |
+|---|---|
+| `dart format --output=none --set-exit-if-changed` | 51 arquivos; zero alterações |
+| Linha de base 1.1.0 antes das mudanças | 106 testes aprovados |
+| `flutter analyze --no-pub` | Sem problemas |
+| `flutter test --no-pub` | 118 testes aprovados |
+| `integration_test/research_test.dart` | Aprovado no Android; duas verificações funcionais mais o encerramento da suíte |
+| APK release com `lib/main.dart` | Compilado, versão 1.2.0/code 3; 92.075.948 bytes |
+| Assinatura | Verificada com apksigner; certificado igual ao APK 1.1.0 local |
+| Instalação e abertura release | `adb install -r`: Success; tela inicial visível, sem FATAL EXCEPTION/E/flutter no processo durante a conferência |
+
+A suíte nova cobre catálogo/procedência, normalização de acentos e moeda, presets, combinações/deduplicação/exclusão, domínios enganosos, limites, agrupamento de produtos distintos, CRUD, backup v3, validação antes de importar, migração real de banco v2 e reabertura. Widgets verificam hub em 320/411/760 dp a 1,8x; a suíte existente mantém telas estreitas, temas, OCR com vários candidatos, revisão, comparação, filtros e navegação.
+
+No Android: navegação pelo hub, escolha de nicho/subnicho, geração/salvamento de pacote, detecção de checkout, salvamento de evidência, exportação JSON em memória e persistência após reabrir o banco. Banco de QA com nome aleatório e preferências simuladas; dados pessoais não são limpos. Uma segunda verificação executa o assistente num WebView real com fixture local: quantidade ausente não vira 1, filtro mínimo exige valor conhecido, datas ausentes obedecem à inclusão e cards reaparecem ao remover filtros.
+
+Capturas reais: `docs/screenshots/120-explorar-escuro.png`, `120-explorar-claro.png`, `120-pesquisa-360.png`, `120-construtor.png`, `120-detector.png`. A conferência final do release está em `dist/release-smoke-1.2.0.png` (ignorado pelo Git). Hash SHA-256 do APK: `8426cea04d64e6e0ccd4606a6a556977d6d3ad8926c08da526f9991e736a6f9c`. Logs locais: `analyze-1.2.log`, `tests-1.2.log`, `build/research_test.log` (ignorados pelo Git).
+
+A verificação live da Meta **não foi repetida nesta rodada**. Os resultados abaixo pertencem à 1.1.0. Compartilhamento/exportação pelo seletor Android e aparelho físico permanecem sem uma nova validação nesta versão; os caminhos nativos existentes são preservados. Fases 2/3 não são declaradas entregues.
+
+Para repetir a suíte Android: `bash tool/android_tests.sh integration_test/research_test.dart emulator-5554`. Execute comandos Flutter e builds em sequência. Depois de `flutter drive`, compile release com a resolução de dependências padrão (sem `--no-pub`) para regenerar o registrador de plugins sem o plugin de integração.
+
+## Histórico de validação — 1.1.0
 
 Data: 28–29/10/2026 (America/Sao_Paulo). Versão testada: 1.1.0+2.
 

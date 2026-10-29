@@ -202,8 +202,6 @@ class OfferCard extends StatelessWidget {
                   ),
                   if (o.priceCents != null)
                     Pill(priceLabel(o), icon: Icons.sell_outlined),
-                  if (o.analysis != Analysis.notAnalyzed)
-                    Pill(o.analysis.label),
                 ],
               ),
             ],
