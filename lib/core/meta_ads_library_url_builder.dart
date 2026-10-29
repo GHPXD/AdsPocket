@@ -18,7 +18,14 @@ const countries = <String, String>{
 
 class MetaAdsLibraryUrlBuilder {
   static final home = Uri.https('www.facebook.com', '/ads/library/');
-  static const _hosts = {'facebook.com', 'www.facebook.com', 'm.facebook.com'};
+  // Exact hosts only. web.facebook.com is Meta's own regional redirect target
+  // (`_rdc=1&_rdr`) for the same Library.
+  static const _hosts = {
+    'facebook.com',
+    'www.facebook.com',
+    'm.facebook.com',
+    'web.facebook.com',
+  };
 
   static String normalizeText(String text) =>
       text.trim().replaceAll(RegExp(r'\s+'), ' ');
@@ -70,9 +77,11 @@ class MetaAdsLibraryUrlBuilder {
     SearchType type = SearchType.keyword,
     String country = 'BR',
     String status = 'active',
+    String media = 'all',
   }) {
     if (!countries.containsKey(country) ||
-        !{'active', 'all'}.contains(status)) {
+        !{'active', 'all'}.contains(status) ||
+        !{'all', 'image', 'video'}.contains(media)) {
       throw const FormatException('Filtros inválidos.');
     }
     final query = normalizeText(text);
@@ -86,6 +95,7 @@ class MetaAdsLibraryUrlBuilder {
       'active_status': status,
       'ad_type': 'all',
       'country': country,
+      if (media != 'all') 'media_type': media,
     };
     if (type == SearchType.pageId) {
       if (!RegExp(r'^\d{1,40}$').hasMatch(query)) {
@@ -105,6 +115,40 @@ class MetaAdsLibraryUrlBuilder {
     return values?.length == 1 && RegExp(r'^\d{1,40}$').hasMatch(values!.single)
         ? values.single
         : null;
+  }
+
+  /// Page ID visible in a Facebook profile link the user tapped, such as
+  /// `/61569677676829/` or `/profile.php?id=…`. Vanity names have no ID and
+  /// return null; nothing is looked up remotely.
+  static String? profilePageId(Uri uri) {
+    if (safeHttps(uri.toString()) == null || !_hosts.contains(uri.host)) {
+      return null;
+    }
+    final numeric = RegExp(r'^/(\d{5,40})/?$').firstMatch(uri.path);
+    if (numeric != null) return numeric[1];
+    final ids = uri.queryParametersAll['id'];
+    return uri.path == '/profile.php' &&
+            ids?.length == 1 &&
+            RegExp(r'^\d{5,40}$').hasMatch(ids!.single)
+        ? ids.single
+        : null;
+  }
+
+  /// Whether two Library URLs show the same view. Meta rewrites URLs after
+  /// loading (host, sorting and display parameters), so history lookups
+  /// compare the Page ID, or the query and country, instead of exact URLs.
+  static bool sameView(Uri a, Uri b) {
+    if (!isLibrary(a) || !isLibrary(b)) return false;
+    final pa = pageId(a), pb = pageId(b);
+    if (pa != null || pb != null) return pa == pb;
+    final qa = a.queryParameters['q'], qb = b.queryParameters['q'];
+    if (qa != null || qb != null) {
+      final ca = a.queryParameters['country'];
+      final cb = b.queryParameters['country'];
+      return normalizeText(qa ?? '') == normalizeText(qb ?? '') &&
+          (ca == null || cb == null || ca == cb);
+    }
+    return canonical(a) == canonical(b);
   }
 
   static SearchType identify(Uri uri) => pageId(uri) != null

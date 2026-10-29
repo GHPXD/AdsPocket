@@ -29,10 +29,25 @@ android {
         versionName = flutter.versionName
     }
 
+    // Stable releases are signed with a private key supplied by the environment
+    // (GitHub secrets in CI). Without it, the local debug key keeps personal
+    // builds installable over 1.0.0, which used that same key.
+    val releaseStore = System.getenv("ADSPOCKET_KEYSTORE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("ADSPOCKET_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ADSPOCKET_KEY_ALIAS")
+                keyPassword = System.getenv("ADSPOCKET_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Personal installation only; use a private production signing configuration before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseStore != null) "release" else "debug")
+            proguardFiles("proguard-rules.pro")
         }
     }
 }

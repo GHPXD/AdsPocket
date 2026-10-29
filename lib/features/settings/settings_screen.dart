@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../app/app_controller.dart';
+import '../../core/longevity.dart';
+import '../../core/text_extraction.dart';
 import '../../core/meta_ads_library_url_builder.dart';
 import '../../core/native_bridge.dart';
 import '../../core/widgets.dart';
 import '../../data/backup_service.dart';
 import '../../data/models.dart';
+import '../../data/offer.dart';
 import '../history/history_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -22,7 +25,7 @@ class SettingsScreen extends StatelessWidget {
             padding: const EdgeInsets.all(24),
             children: [
               Text(
-                'Do seu jeito',
+                'Ajustes',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -61,6 +64,33 @@ class SettingsScreen extends StatelessWidget {
               _select<ViewMode>(context, 'Modo visual', s.viewMode, {
                 for (final v in ViewMode.values) v: v.label,
               }, (v) => app.updateSettings(s.copyWith(viewMode: v))),
+              const SizedBox(height: 12),
+              Card(
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Modo imersivo'),
+                      subtitle: const Text(
+                        'Biblioteca em tela cheia com controles compactos',
+                      ),
+                      value: s.immersive,
+                      onChanged: (v) =>
+                          runGuarded(context, () => app.setImmersive(v)),
+                    ),
+                    SwitchListTile(
+                      title: const Text('Retomar a última pesquisa'),
+                      subtitle: const Text(
+                        'Reabrir a Biblioteca onde você parou',
+                      ),
+                      value: s.restoreSession,
+                      onChanged: (v) => runGuarded(
+                        context,
+                        () => app.updateSettings(s.copyWith(restoreSession: v)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 12),
               Card(
                 child: SwitchListTile(
@@ -103,6 +133,96 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
+              const SectionTitle('Assistente da Biblioteca'),
+              const SizedBox(height: 12),
+              Card(
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Assistente nos cards'),
+                      subtitle: const Text(
+                        'Dias ativos, salvar em 1 toque, filtro e auto-rolagem. Lê apenas o texto visível dos cards.',
+                      ),
+                      value: s.assistant,
+                      onChanged: (v) => runGuarded(
+                        context,
+                        () => app.updateSettings(s.copyWith(assistant: v)),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Auto-rolar até encontrar'),
+                      trailing: DropdownButton<int>(
+                        value: s.scrollTarget,
+                        underline: const SizedBox.shrink(),
+                        items: [
+                          for (final n in const [10, 20, 30, 50, 100])
+                            DropdownMenuItem(
+                              value: n,
+                              child: Text('$n anúncios'),
+                            ),
+                        ],
+                        onChanged: (v) => runGuarded(
+                          context,
+                          () => app.updateSettings(s.copyWith(scrollTarget: v)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              const SectionTitle('Filtros'),
+              const SizedBox(height: 4),
+              Text(
+                'Também ajustáveis na barra da Biblioteca e no Explorar.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _select<int>(
+                context,
+                'Ativos há pelo menos',
+                s.minDays ?? -1,
+                {
+                  for (final d in LongevityFilter.presets)
+                    d ?? -1: d == null
+                        ? 'Sem filtro'
+                        : 'Ativos há $d dias ou mais',
+                  if (s.minDays != null &&
+                      !LongevityFilter.presets.contains(s.minDays))
+                    s.minDays!: '${s.minDays} dias',
+                },
+                (v) => app.updateSettings(
+                  s.copyWith(minDays: () => v < 0 ? null : v),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Incluir registros sem data'),
+                      subtitle: const Text(
+                        'Mostrar referências sem data de início no filtro',
+                      ),
+                      value: s.includeUndated,
+                      onChanged: (v) => runGuarded(
+                        context,
+                        () => app.updateSettings(s.copyWith(includeUndated: v)),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('Faixa low ticket'),
+                      subtitle: Text(s.priceRange.label),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _editRange(context),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               const SectionTitle('Dados no aparelho'),
               const SizedBox(height: 12),
               _tile(
@@ -120,7 +240,7 @@ class SettingsScreen extends StatelessWidget {
                 Icons.bookmarks_outlined,
                 'Gerenciar favoritos',
                 'Anunciantes, anúncios e ofertas',
-                () => app.selectTab(2),
+                () => app.selectTab(Tabs.saved),
               ),
               _tile(
                 Icons.delete_sweep_outlined,
@@ -164,7 +284,7 @@ class SettingsScreen extends StatelessWidget {
               _tile(
                 Icons.file_upload_outlined,
                 'Exportar backup JSON',
-                'Favoritos, pesquisas e configurações',
+                'Favoritos, mineração, pesquisas e ajustes',
                 () => runGuarded(context, () async {
                   final saved = await NativeBridge.exportBackup(
                     app.exportBackup(),
@@ -179,6 +299,26 @@ class SettingsScreen extends StatelessWidget {
                     );
                   }
                 }),
+              ),
+              _tile(
+                Icons.table_chart_outlined,
+                'Exportar Mineração (CSV)',
+                'Planilha das referências catalogadas',
+                () => _csv(
+                  context,
+                  app.exportOffersCsv(),
+                  'adspocket-mineracao.csv',
+                ),
+              ),
+              _tile(
+                Icons.table_rows_outlined,
+                'Exportar favoritos (CSV)',
+                'Anunciantes, pesquisas e links',
+                () => _csv(
+                  context,
+                  app.exportBookmarksCsv(),
+                  'adspocket-favoritos.csv',
+                ),
               ),
               _tile(
                 Icons.file_download_outlined,
@@ -203,7 +343,7 @@ class SettingsScreen extends StatelessWidget {
                         ),
                       ),
                       SizedBox(height: 4),
-                      Text('Versão 1.0.0 · Uso pessoal'),
+                      Text('Versão $appVersion · Uso pessoal'),
                       SizedBox(height: 12),
                       Text(
                         'Aplicativo independente, sem afiliação à Meta. O conteúdo dos anúncios pertence aos seus respectivos titulares. Sem conta própria, assinatura ou analytics.',
@@ -241,7 +381,7 @@ class SettingsScreen extends StatelessWidget {
                 () => showLicensePage(
                   context: context,
                   applicationName: 'AdsPocket',
-                  applicationVersion: '1.0.0',
+                  applicationVersion: appVersion,
                 ),
               ),
               _tile(
@@ -292,6 +432,89 @@ class SettingsScreen extends StatelessWidget {
       if (v != null) runGuarded(context, () => onChanged(v));
     },
   );
+  Future<void> _csv(BuildContext context, String text, String name) =>
+      runGuarded(context, () async {
+        final saved = await NativeBridge.exportFile(text, name, 'text/csv');
+        if (saved && context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('CSV exportado.')));
+        }
+      });
+
+  Future<void> _editRange(BuildContext context) async {
+    final r = app.settings.priceRange;
+    String plain(int c) =>
+        '${c ~/ 100},${(c % 100).toString().padLeft(2, '0')}';
+    final min = TextEditingController(text: plain(r.minCents));
+    final max = TextEditingController(text: plain(r.maxCents));
+    var currency = r.currency;
+    final result = await showDialog<PriceRange>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Faixa low ticket'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: min,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Mínimo'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: max,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Máximo'),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: currency,
+                decoration: const InputDecoration(labelText: 'Moeda'),
+                items: [
+                  for (final c in currencies.keys)
+                    DropdownMenuItem(value: c, child: Text(c)),
+                ],
+                onChanged: (v) => setState(() => currency = v!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, PriceRange.lowTicket),
+              child: const Text('Padrão'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final a = parseMoneyToCents(min.text);
+                final b = parseMoneyToCents(max.text);
+                final range = a == null || b == null
+                    ? null
+                    : PriceRange(a, b, currency);
+                if (range == null || !range.valid) return;
+                Navigator.pop(context, range);
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    min.dispose();
+    max.dispose();
+    if (result == null || !context.mounted) return;
+    await runGuarded(
+      context,
+      () => app.updateSettings(app.settings.copyWith(priceRange: result)),
+    );
+  }
+
   Future<void> _import(BuildContext context) => runGuarded(context, () async {
     final text = await NativeBridge.importBackup();
     if (text == null) return;
@@ -302,7 +525,7 @@ class SettingsScreen extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Importar backup?'),
         content: Text(
-          '${backup.bookmarks.length} favoritos e ${backup.history.length} pesquisas serão mesclados. Registros existentes serão preservados.\n\nDeseja também restaurar as configurações?',
+          '${backup.bookmarks.length} favoritos, ${backup.offers.length} referências da Mineração e ${backup.history.length} pesquisas serão mesclados. Registros existentes serão preservados.\n\nDeseja também restaurar as configurações?',
         ),
         actions: [
           TextButton(
@@ -326,7 +549,7 @@ class SettingsScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '$count novos favoritos importados. Duplicatas preservadas.',
+            '$count novos registros importados. Duplicatas preservadas.',
           ),
         ),
       );

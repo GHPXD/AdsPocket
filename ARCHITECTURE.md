@@ -6,55 +6,93 @@
 lib/
   main.dart                       inicialização e falha recuperável de armazenamento
   app/
-    app.dart                      MaterialApp, IndexedStack, back Android, fila de compartilhamento
-    app_controller.dart           estado e casos de uso locais
+    app.dart                      MaterialApp, 5 abas (IndexedStack), back Android, fila de compartilhamento
+    app_controller.dart           estado global (ChangeNotifier), sessão, casos de uso locais, Tabs
     theme.dart                    temas Material 3
   core/
-    meta_ads_library_url_builder.dart
+    meta_ads_library_url_builder.dart   construção/validação de URLs da Biblioteca
+    longevity.dart                CivilDate, idade em dias civis, filtro local, status
+    text_extraction.dart          datas PT/EN e preços em texto reconhecido; dinheiro
+    ocr_engine.dart               interface OcrEngine + ML Kit (substituível em testes)
     native_bridge.dart            contrato MethodChannel
-    widgets.dart                  estados vazios, confirmações e tratamento de erros
+    widgets.dart                  estados vazios, confirmações, tratamento de erros
   data/
-    models.dart                   modelos imutáveis e IDs locais aleatórios
-    local_repository.dart         SQLite
-    backup_service.dart           JSON versionado e validação
+    models.dart                   Bookmark, SearchHistory, UserSettings
+    offer.dart                    Offer (Mineração), PriceRange, OpportunityScore
+    local_repository.dart         SQLite v2 e migração
+    backup_service.dart           JSON v1/v2, CSV, política para ZIP
   features/
-    explore/                      pesquisa, filtros e atalhos
-    browser/                      WebView, política de navegação e modos visuais
-    favorites/                    listagem, busca, edição e imagens
+    explore/                      pesquisa, filtros, atalhos, retomada
+    browser/                      WebView, toolbar, modos, imersivo, erros, assistente (library_assistant.dart)
+    saved/                        aba Salvos (Anúncios | Anunciantes | Outros)
+    mining/                       lista de anúncios, filtros, editor, detalhe, OCR, revisão, comparador
+    favorites/                    anunciantes e outros, fluxo "Salvar referência"
     history/                      histórico pesquisável
-    settings/                     preferências e manutenção
-android/app/src/main/kotlin/.../MainActivity.kt
-                                  intents e Storage Access Framework
+    settings/                     ajustes e manutenção
+android/app/src/main/kotlin/.../MainActivity.kt   intents, SAF, imagens validadas
 ```
 
-`ChangeNotifier` com `ListenableBuilder` mantém o estado de forma leve, sem framework adicional. `IndexedStack` preserva as telas. O WebView só é montado após a primeira visita à Biblioteca; uma chave estável mantém seu controller. Rebuilds de widgets Flutter não recriam a plataforma nativa nem recarregam uma URL. Um número sequencial identifica pedidos explícitos de navegação; atualizações observadas de URL não disparam novos carregamentos.
+`ChangeNotifier` + `ListenableBuilder`, sem framework adicional. Abas: `Tabs.explore`, `library`, `saved`, `settings`.
 
-## Fluxo real de dados
+## WebView
 
-Explorar → URL Builder → histórico SQLite → WebView oficial (ou navegador escolhido). A seleção de anunciantes acontece nos controles da Meta. A observação da URL identifica `view_all_page_id`, preserva o link original e salva a última Página visitada. Favoritos nunca dependem de dados extraídos de cards. Não há busca remota de nomes, scraping, API comercial simulada, polling ou backend.
+`BrowserScreen` é montado na primeira visita e mantido no `IndexedStack`; a chave estável preserva o controller. Pedidos explícitos de navegação incrementam `navigationSerial`; observações de URL nunca disparam carregamentos. `_loadPending` compara a URL canônica atual e ignora pedidos duplicados.
 
-`Bookmark` unifica a persistência dos tipos `advertiser`, `search`, `ad`, `offer` e `image`. Os nomes de domínio `AdvertiserBookmark`, `SavedSearch` e `SavedAdReference` são aliases desse modelo compartilhado. `SearchHistory` é separado. `UserSettings` fica em shared_preferences, validado antes da escrita.
+`jumpTo(target)` procura a URL no histórico do WebView (`getCopyBackForwardList`) e usa `goBackOrForward`, preservando rolagem e estado da página; só carrega de novo quando a entrada não existe. É usado por "Voltar à pesquisa" e pelo chip Página ↔ Pesquisa.
+
+`AppController.observeUrl` persiste `lastUrl`; URLs com `view_all_page_id` viram `lastAdvertiser`; URLs com `q` viram `initialSearch` (o retorno da pesquisa). Com "Retomar a última pesquisa", `currentUrl` inicial é `lastUrl`. A pilha do WebView não sobrevive ao encerramento do processo.
+
+Modo imersivo: `AppController.libraryChromeHidden` remove o `NavigationBar` quando a aba é a Biblioteca; a toolbar continua abaixo do WebView (nunca sobreposta). Desktop: `preferredContentMode` + `reload()` na troca. Teclado aberto: cabeçalho e toolbar saem para dar espaço.
+
+`loadsCompleted` e `failed` são estados públicos do `BrowserScreenState` usados pelos testes de integração como condições verificáveis (não logs).
+
+## Assistente da Biblioteca
+
+`assistantScript` é injetado como `UserScript` (fim do documento) e só age em `/ads/library`. Ele encontra cada card pelo texto "Library ID" e sobe na árvore até o maior ancestral com um único ID (independe de classes CSS). Envia ao app, pelo handler `adspocket`, apenas o texto visível do card (ID, linha de início, ativo, anunciante, texto, variações, vídeo, links de perfil e de vendas) e a contagem visível de resultados com a URL da medição. Um `MutationObserver` com debounce acompanha a rolagem; cards que saem da página são descartados.
+
+O app valida e limita tudo (`LibraryCard.fromJson`, `parseAssistantMessage`), calcula as idades em dias civis no Dart e devolve `AdsPocketAssist.apply({ages, saved, minDays, includeUndated, minAds})`; `minAds` compara com o "N ads use this creative and text" do card (1 quando ausente). O script desenha a barra de ações do card (Salvar, Página, Copiar, Compartilhar, selo de dias/anúncios; ícones SVG criados por DOM, sem `innerHTML`) e oculta, de forma reversível, os cards fora do filtro. Salvar, Copiar e Compartilhar chamam o handler; `LibraryCard.toOffer` cria a referência (identidade `ad:<Library ID>`, sem duplicar). `autoScroll(n)` rola até achar mais n cards no filtro. `disable()` remove selos e restaura os cards. O `MutationObserver` usa *throttle* de 700 ms (não *debounce*), porque vídeos e contadores mudam a página o tempo todo e adiariam a leitura indefinidamente.
+
+**Botão Página.** O link do anunciante no card é o ID do perfil, que muitas vezes difere do Page ID da Biblioteca. `findPage(id)` clica em "Ver detalhes do anúncio", espera o diálogo com aquele Library ID, expande "Sobre o anunciante", lê "Identificação: N" do texto visível, fecha o diálogo e envia `{type: 'page', id, page, name}`. O Dart valida (só dígitos), guarda `pageOfAd` e `pageByProfile` (devolvidos ao script em `apply({pages})` para não reabrir detalhes) e abre `MetaAdsLibraryUrlBuilder.build(type: pageId, status: active)`. Sem ID nos detalhes, `suggest(card)` preenche o campo de busca da Meta com o nome do anunciante (setter nativo + evento `input`), espera a lista `role=listbox` e destaca com `outline` a opção cujo texto contém o @ do link do perfil (ou a única com o mesmo nome); envia `pick: true`. O app avisa para tocar no destaque e guarda `pendingPick`; quando a URL seguinte trouxer `view_all_page_id` em até 2 min, o ID é associado ao anúncio e ao perfil. A seleção não é automatizada: a Meta ignora cliques sintéticos nessa lista e o app não simula toques. O Page ID descoberto também vai para o anúncio salvo.
+
+**Modo Feed.** `ViewMode.feed` faz `libraryChromeHidden` e remove cabeçalho, barra do assistente e toolbar; um controle flutuante (`AnimatedSlide`, escondido em `onScrollChanged` ao descer) dá acesso a Voltar, filtros, Auto-rolar e Sair. `AdsPocketAssist.feed(true)` troca `position: sticky` por `static` nas barras largas da Meta fora dos cards e diálogos (guardando o valor em `data-adspocket-pin`); `feed(false)` restaura. O script não usa cookies, armazenamento nem rede (há teste que impede).
+
+A contagem da Meta só é gravada num anunciante (`metaAdCount`, `metaAdCountAt`) quando a URL da medição tem o mesmo Page ID.
+
+## Favoritos e identificação
+
+`saveCurrentReference(uri)` é o único caminho do botão Salvar: com Page ID abre o formulário de anunciante identificado; sem Page ID abre o diálogo de quatro opções. `askPageIdUrl` valida dígitos, constrói a URL e exige confirmação. `Bookmark.validateKind` impede, no repositório, gravar `advertiser` sem Page ID igual ao da URL. `Bookmark.identifyAs` reclassifica mantendo ID, nome, tags e notas e guarda a URL anterior em `sourceUrl`.
 
 ## Persistência e migração
 
-SQLite `adspocket.db`, esquema versão 1:
+SQLite `adspocket.db`, esquema **versão 2**:
 
-- `bookmarks`: ID local, identidade canônica única, JSON do modelo.
-- `history`: ID local, URL canônica única, data indexável para ordenação, JSON do modelo.
+- `bookmarks` (v1): ID, identidade canônica única, JSON.
+- `history` (v1): ID, URL canônica única, data, JSON.
+- `offers` (v2): ID, identidade única opcional (`ad:<id público>`), `updated_at`, JSON.
+- `visits` (v2): visitas por anunciante (máx. 100 por anunciante), índice por anunciante/data.
 
-As consultas de dados usam parâmetros. Repetir uma pesquisa atualiza a visita mantendo o ID. O histórico mantém no máximo 500 registros. Favoritos são únicos por tipo e URL; edição explícita conserva o ID. A importação usa transação e `INSERT OR IGNORE` para ambos os conflitos (ID e identidade), sem sobrescrever. Toda entrada é validada antes de abrir a transação.
+`onUpgrade` 1→2 roda dentro da transação do sqflite: cria as tabelas e reescreve no lugar cada `advertiser` legado. Com Page ID na URL → recebe `pageId`; sem → `unidentified` com `legacyKind = advertiser`. Nenhum registro é apagado e nenhum ID é inventado. Falha reverte tudo. `LocalRepository.createV1` reproduz o esquema 1.0.0 para testes de migração.
 
-A migração usa `OpenDatabaseOptions.version` e `onUpgrade`; uma mudança futura exige incrementar `schemaVersion` e adicionar passos ordenados, transacionais e testados. A versão atual não tenta converter esquemas desconhecidos nem apaga dados automaticamente. Não há migração fictícia de uma versão que ainda não existe.
+Campos novos de `Bookmark` e `UserSettings` são opcionais no JSON, então dados e preferências da 1.0.0 carregam sem conversão. Consultas são parametrizadas; gravações usam transações.
+
+## Datas, longevidade e score
+
+`CivilDate` guarda ano/mês/dia; idade = diferença entre meia-noites UTC das duas datas civis, imune a fuso e horário de verão. A data de hoje vem do relógio local do aparelho. `LongevityFilter` age só sobre `Offer.startDate` catalogado; data futura nunca passa num filtro de idade. Data de início, data de captura, última visita e última verificação são campos distintos.
+
+`OpportunityScore` soma apenas critérios com dados e expõe `coverage` (pontos possíveis cobertos) e `pending`. Moeda diferente da faixa não é comparada.
+
+## OCR
+
+`OcrEngine.recognize(path)` retorna linhas com caixas em pixels da imagem. A seleção de região filtra linhas pelo centro da caixa. `findDateCandidates` encontra datas e procura frases de início apenas entre a data anterior e a atual (para não atribuir a frase de um anúncio ao próximo). `DateSuggestion.preselected` só existe com uma única frase de início não ambígua; mesmo assim o usuário confirma.
 
 ## Android e arquivos
 
-`MainActivity` recebe `ACTION_SEND` (texto/imagem) e `ACTION_VIEW` (links HTTPS da Biblioteca). A fila de até 20 itens é guardada em preferências privadas até o Dart consumi-la. `onNewIntent` atende novas entregas com o processo ativo; a inicialização consome entregas a frio. Conteúdo é confirmado na interface antes de abrir/salvar.
-
-O canal `app.adspocket/native` oferece `pendingShares`, `importBackup`, `exportBackup`, `pickImage`, `imagePath`, `deleteImage` e `openBrowser`. JSON usa `ACTION_OPEN_DOCUMENT` / `ACTION_CREATE_DOCUMENT`; não há acesso amplo ao armazenamento. Leitura limitada a 5 MB para backups, 15 MB para imagem e 40 megapixels. Imagens têm cabeçalho e dimensões validados, recebem nome UUID e são copiadas para `files/references`. Caminhos arbitrários nunca vêm do JSON. I/O nativo usa executor dedicado.
+Canal `app.adspocket/native`: `pendingShares`, `importBackup`, `exportBackup`, `exportFile` (JSON/CSV via `ACTION_CREATE_DOCUMENT`, nome validado), `pickImage`, `imagePath`, `saveImageBytes` (captura do WebView, mesma validação de importação: assinatura PNG/JPEG/WebP, ≤15 MB, ≤40 MP, nome UUID), `deleteImage`, `openBrowser`. Imagens não referenciadas são removidas ao cancelar fluxos.
 
 ## Segurança e privacidade
 
-Entradas de maior risco: links externos, compartilhamentos e backups. URLs da Biblioteca exigem HTTPS, hosts exatos permitidos, caminho `/ads/library`, ausência de credenciais e porta padrão; IDs públicos são numéricos. Esquemas `javascript:`, `intent:`, `file:`, HTTP e hosts enganadores são rejeitados. Links fora da Biblioteca pedem confirmação antes da abertura externa. Erros TLS não são ignorados, permissões de câmera/microfone são negadas, acesso a arquivos pelo WebView está desativado, e conteúdo misto é bloqueado.
+URLs da Biblioteca: HTTPS, hosts exatos, `/ads/library`, sem credenciais, porta padrão, IDs numéricos. Links externos pedem confirmação. Permissões de câmera/microfone do site negadas; acesso a arquivos do WebView desativado; conteúdo misto bloqueado; TLS inválido cancelado. O app não lê cookies, senhas ou tokens, não injeta folhas de estilo e não altera o User-Agent. Em produção, o DOM é lido pelo assistente (texto visível dos cards e, sob toque no botão Página, do diálogo de detalhes) e pela verificação de página em branco; os testes live leem texto do DOM para conferir os resultados. CSV neutraliza fórmulas. `ArchivePolicy` rejeita caminhos absolutos, `..`, barras invertidas, letras de unidade, nomes fora do padrão, duplicatas e tamanhos excessivos.
 
-Não há leitura de cookies, senhas ou tokens. Cookies normais permanecem sob gestão do WebView. O app não cria tela de login, não altera User-Agent manualmente para superar bloqueios e não injeta CSS. O modo desktop solicita uma preferência nativa de conteúdo; não garante suporte do site. Há apenas verificação conservadora de página em branco e comando de saída de mídia em tela cheia, sem extração de anúncios. A única permissão de plataforma solicitada é INTERNET; o manifesto final também inclui a permissão privada de receiver gerada pelo AndroidX. Backup automático Android está desabilitado.
+## Build e distribuição
 
+Release: `ADSPOCKET_KEYSTORE`, `ADSPOCKET_KEYSTORE_PASSWORD`, `ADSPOCKET_KEY_ALIAS`, `ADSPOCKET_KEY_PASSWORD` ativam a assinatura própria; sem elas, a chave de debug local (a mesma da 1.0.0) é usada. `proguard-rules.pro` suprime avisos dos reconhecedores opcionais do ML Kit. `.github/workflows/android.yml` gera o APK como artefato e um rascunho de release para tags `v*`.

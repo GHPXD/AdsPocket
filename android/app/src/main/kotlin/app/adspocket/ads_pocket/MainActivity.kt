@@ -18,6 +18,8 @@ class MainActivity : FlutterActivity() {
     private var bridge: MethodChannel? = null
     private var pendingResult: MethodChannel.Result? = null
     private var exportText: String? = null
+    private var exportMime = "application/json"
+    private var exportName = "adspocket-backup.json"
     private val io = Executors.newSingleThreadExecutor()
     private val queuePrefs by lazy { getSharedPreferences("incoming", MODE_PRIVATE) }
     private val maxBackup = 5 * 1024 * 1024
@@ -61,24 +63,37 @@ class MainActivity : FlutterActivity() {
                         }
                     } catch (_: Exception) { result.success(false) }
                 }
+                "saveImageBytes" -> {
+                    // Explicit user capture of the visible WebView area, validated like imports.
+                    val bytes = call.arguments as? ByteArray
+                    if (bytes == null) { result.success(null); return@setMethodCallHandler }
+                    io.execute {
+                        val file = try { storeImage(bytes) } catch (_: Exception) { null }
+                        runOnUiThread { result.success(file) }
+                    }
+                }
                 "deleteImage" -> {
                     val name = call.arguments as? String ?: ""
                     if (Regex("^[a-f0-9-]{36}\\.(png|jpg|webp)$").matches(name)) File(filesDir,"references/$name").delete()
                     result.success(null)
                 }
-                "importBackup", "exportBackup", "pickImage" -> {
+                "importBackup", "exportBackup", "exportFile", "pickImage" -> {
                     if (pendingResult != null) { result.error("busy", "Um seletor já está aberto.", null); return@setMethodCallHandler }
                     pendingResult = result
                     try {
                         when (call.method) {
-                            "exportBackup" -> {
-                                val text = call.arguments as? String ?: throw IllegalArgumentException()
+                            "exportBackup", "exportFile" -> {
+                                val args = call.arguments
+                                val text = (if (args is Map<*, *>) args["text"] else args) as? String ?: throw IllegalArgumentException()
                                 require(text.toByteArray(Charsets.UTF_8).size <= maxBackup)
                                 exportText = text
+                                exportMime = if (args is Map<*, *> && args["mime"] == "text/csv") "text/csv" else "application/json"
+                                val name = (args as? Map<*, *>)?.get("name") as? String
+                                exportName = if (name != null && Regex("^[a-z0-9-]{1,60}\\.(json|csv)$").matches(name)) name else "adspocket-backup.json"
                                 startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                                     addCategory(Intent.CATEGORY_OPENABLE)
-                                    type = "application/json"
-                                    putExtra(Intent.EXTRA_TITLE, "adspocket-backup.json")
+                                    type = exportMime
+                                    putExtra(Intent.EXTRA_TITLE, exportName)
                                 }, 103)
                             }
                             "importBackup" -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -144,9 +159,10 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun copyImage(uri: Uri): String {
-        val bytes = readBounded(uri, maxImage)
-        require(bytes.size >= 12)
+    private fun copyImage(uri: Uri): String = storeImage(readBounded(uri, maxImage))
+
+    private fun storeImage(bytes: ByteArray): String {
+        require(bytes.size in 12..maxImage)
         val extension = when {
             bytes.take(8).toByteArray().contentEquals(byteArrayOf(137.toByte(),80,78,71,13,10,26,10)) -> "png"
             bytes[0] == 255.toByte() && bytes[1] == 216.toByte() && bytes[2] == 255.toByte() -> "jpg"

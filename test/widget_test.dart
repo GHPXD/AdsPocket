@@ -39,9 +39,13 @@ void main() {
       );
       await tester.ensureVisible(find.text('Explorar anúncios'));
       await tester.tap(find.text('Explorar anúncios'));
-      await tester.runAsync(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      });
+      // SQLite FFI runs real I/O: wait for the condition, not a fixed delay.
+      for (var i = 0; i < 50 && app.tab != Tabs.library; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pump();
+      }
       await tester.pumpAndSettle();
       expect(app.history.single.query, 'planilha financeira');
       expect(app.currentUrl.queryParameters['q'], 'planilha financeira');
@@ -54,13 +58,14 @@ void main() {
   ) async {
     await tester.pumpWidget(AdsPocketApp(controller: app, enableNative: false));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Favoritos'));
+    await tester.tap(find.text('Salvos'));
     await tester.pumpAndSettle();
-    expect(find.text('Seu repertório'), findsOneWidget);
-    expect(find.text('Um lugar para suas descobertas'), findsOneWidget);
-    await tester.tap(find.text('Configurações'));
+    expect(app.tab, Tabs.saved);
+    expect(find.text('Nenhum anúncio salvo'), findsOneWidget);
+    await tester.tap(find.text('Ajustes'));
     await tester.pumpAndSettle();
-    expect(find.text('Do seu jeito'), findsOneWidget);
+    expect(app.tab, Tabs.settings);
+    expect(find.text('Retomar a última pesquisa'), findsOneWidget);
     await tester.runAsync(
       () => app.updateSettings(app.settings.copyWith(theme: 'light')),
     );

@@ -70,14 +70,18 @@ Future<void> runGuarded(
   }
 }
 
-Future<void> copyLink(BuildContext context, String text) async {
+Future<void> copyLink(
+  BuildContext context,
+  String text, {
+  String message = 'Link copiado.',
+}) async {
   await runGuarded(context, () async {
     await Clipboard.setData(ClipboardData(text: text));
     await HapticFeedback.selectionClick();
     if (context.mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Link copiado.')));
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   });
 }

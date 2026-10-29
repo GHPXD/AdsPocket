@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../core/meta_ads_library_url_builder.dart';
 import 'models.dart';
+import 'offer.dart';
 
 class LocalRepository {
   LocalRepository(this.db);
   final Database db;
-  static const schemaVersion = 1;
+  static const schemaVersion = 2;
 
   static Future<LocalRepository> open({
     DatabaseFactory? factory,
@@ -19,22 +20,66 @@ class LocalRepository {
       options: OpenDatabaseOptions(
         version: schemaVersion,
         onCreate: (db, version) async {
-          await db.execute(
-            'CREATE TABLE bookmarks (id TEXT PRIMARY KEY, identity TEXT NOT NULL UNIQUE, data TEXT NOT NULL)',
-          );
-          await db.execute(
-            'CREATE TABLE history (id TEXT PRIMARY KEY, identity TEXT NOT NULL UNIQUE, visited_at TEXT NOT NULL, data TEXT NOT NULL)',
-          );
+          await createV1(db);
+          await _migrateToV2(db);
         },
+        // sqflite runs onUpgrade inside a transaction: a failure rolls back
+        // every step and keeps the v1 data untouched.
         onUpgrade: (db, oldVersion, newVersion) async {
-          // Add ordered, transactional migrations when schemaVersion increases.
-          if (oldVersion != newVersion) {
+          if (oldVersion < 1 || newVersion > schemaVersion) {
             throw StateError('Migração de banco não suportada.');
           }
+          if (oldVersion < 2) await _migrateToV2(db);
         },
       ),
     );
     return LocalRepository(db);
+  }
+
+  /// Schema shipped with 1.0.0. Kept verbatim so migrations are testable.
+  static Future<void> createV1(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE TABLE bookmarks (id TEXT PRIMARY KEY, identity TEXT NOT NULL UNIQUE, data TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE history (id TEXT PRIMARY KEY, identity TEXT NOT NULL UNIQUE, visited_at TEXT NOT NULL, data TEXT NOT NULL)',
+    );
+  }
+
+  static Future<void> _migrateToV2(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE TABLE offers (id TEXT PRIMARY KEY, identity TEXT UNIQUE, updated_at TEXT NOT NULL, data TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE visits (id INTEGER PRIMARY KEY AUTOINCREMENT, bookmark_id TEXT NOT NULL, visited_at TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE INDEX visits_bookmark ON visits (bookmark_id, visited_at)',
+    );
+    // Reclassify 1.0.0 "advertiser" records that have no Page ID. Records are
+    // rewritten in place (same ID); nothing is deleted.
+    for (final row in await db.query('bookmarks')) {
+      final old = Bookmark.fromJson(
+        jsonDecode(row['data'] as String) as Map<String, dynamic>,
+      );
+      final next = old.reclassifyLegacy();
+      if (identical(next, old)) continue;
+      final identity = bookmarkIdentity(next);
+      final clash = await db.query(
+        'bookmarks',
+        where: 'identity = ? AND id != ?',
+        whereArgs: [identity, old.id],
+      );
+      await db.update(
+        'bookmarks',
+        {
+          'identity': clash.isEmpty ? identity : 'legacy:${old.id}',
+          'data': jsonEncode(next.toJson()),
+        },
+        where: 'id = ?',
+        whereArgs: [old.id],
+      );
+    }
   }
 
   static String bookmarkIdentity(Bookmark b) =>
@@ -55,8 +100,11 @@ class LocalRepository {
           )
           .toList();
 
-  Future<void> saveBookmark(Bookmark b) async {
+  /// Returns false when another record already has the same identity.
+  Future<bool> saveBookmark(Bookmark b) async {
+    b.validateKind();
     final identity = bookmarkIdentity(b);
+    var saved = false;
     await db.transaction((tx) async {
       final rows = await tx.query(
         'bookmarks',
@@ -64,12 +112,15 @@ class LocalRepository {
         whereArgs: [identity],
       );
       if (rows.isNotEmpty && rows.first['id'] != b.id) return;
+      await tx.delete('bookmarks', where: 'id = ?', whereArgs: [b.id]);
       await tx.insert('bookmarks', {
         'id': b.id,
         'identity': identity,
         'data': jsonEncode(b.toJson()),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      });
+      saved = true;
     });
+    return saved;
   }
 
   Future<void> record(SearchHistory item) async {
@@ -94,27 +145,104 @@ class LocalRepository {
     });
   }
 
-  Future<void> deleteBookmark(String id) =>
-      db.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
+  Future<void> deleteBookmark(String id) => db.transaction((tx) async {
+    await tx.delete('bookmarks', where: 'id = ?', whereArgs: [id]);
+    await tx.delete('visits', where: 'bookmark_id = ?', whereArgs: [id]);
+  });
   Future<void> deleteHistory(String id) =>
       db.delete('history', where: 'id = ?', whereArgs: [id]);
   Future<void> clearHistory() => db.delete('history');
 
+  Future<void> recordVisit(String bookmarkId, DateTime at) => db.transaction((
+    tx,
+  ) async {
+    await tx.insert('visits', {
+      'bookmark_id': bookmarkId,
+      'visited_at': at.toUtc().toIso8601String(),
+    });
+    // Keep the latest 100 visits per advertiser.
+    await tx.rawDelete(
+      'DELETE FROM visits WHERE bookmark_id = ? AND id NOT IN (SELECT id FROM visits WHERE bookmark_id = ? ORDER BY visited_at DESC LIMIT 100)',
+      [bookmarkId, bookmarkId],
+    );
+  });
+
+  Future<List<DateTime>> visits(String bookmarkId) async => [
+    for (final r in await db.query(
+      'visits',
+      where: 'bookmark_id = ?',
+      whereArgs: [bookmarkId],
+      orderBy: 'visited_at DESC',
+    ))
+      DateTime.parse(r['visited_at'] as String),
+  ];
+
+  Future<List<Offer>> offers() async => [
+    for (final r in await db.query('offers', orderBy: 'updated_at DESC'))
+      Offer.fromJson(jsonDecode(r['data'] as String) as Map<String, dynamic>),
+  ];
+
+  /// Inserts or updates. Throws [StateError] on a duplicate ad ID or URL.
+  Future<void> saveOffer(Offer o) async {
+    o.validate();
+    final identity = o.identity;
+    await db.transaction((tx) async {
+      if (identity != null) {
+        final rows = await tx.query(
+          'offers',
+          where: 'identity = ? AND id != ?',
+          whereArgs: [identity, o.id],
+        );
+        if (rows.isNotEmpty) {
+          throw StateError('Esta referência já está catalogada.');
+        }
+      }
+      await tx.insert('offers', {
+        'id': o.id,
+        'identity': identity,
+        'updated_at': o.updatedAt.toIso8601String(),
+        'data': jsonEncode(o.toJson()),
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+  }
+
+  Future<void> deleteOffer(String id) =>
+      db.delete('offers', where: 'id = ?', whereArgs: [id]);
+
   Future<int> merge(
     List<Bookmark> bookmarks,
-    List<SearchHistory> history,
-  ) async {
+    List<SearchHistory> history, [
+    List<Offer> offers = const [],
+  ]) async {
     var added = 0;
     await db.transaction((tx) async {
+      Future<bool> inserted(String table, Map<String, Object?> row) async {
+        // Ignore both ID and identity conflicts; import never overwrites.
+        final id = await tx.insert(
+          table,
+          row,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+        return id > 0 &&
+            (await tx.rawQuery('SELECT changes() AS n')).first['n'] == 1;
+      }
+
       for (final b in bookmarks) {
-        // Ignore both ID and URL conflicts; import never overwrites existing data.
-        final id = await tx.insert('bookmarks', {
+        if (await inserted('bookmarks', {
           'id': b.id,
           'identity': bookmarkIdentity(b),
           'data': jsonEncode(b.toJson()),
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-        if (id > 0 &&
-            (await tx.rawQuery('SELECT changes() AS n')).first['n'] == 1) {
+        })) {
+          added++;
+        }
+      }
+      for (final o in offers) {
+        if (await inserted('offers', {
+          'id': o.id,
+          'identity': o.identity,
+          'updated_at': o.updatedAt.toIso8601String(),
+          'data': jsonEncode(o.toJson()),
+        })) {
           added++;
         }
       }

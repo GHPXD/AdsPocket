@@ -9,7 +9,8 @@ import '../data/models.dart';
 import '../features/browser/browser_screen.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/favorites/bookmark_editor.dart';
-import '../features/favorites/favorites_screen.dart';
+import '../features/mining/ocr_screen.dart';
+import '../features/saved/saved_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'app_controller.dart';
 import 'theme.dart';
@@ -91,7 +92,37 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           if (!mounted) return;
           if (text.startsWith('image:')) {
             final file = text.substring(6);
-            if (await NativeBridge.imagePath(file) != null && mounted) {
+            if (await NativeBridge.imagePath(file) == null || !mounted) {
+              continue;
+            }
+            final choice = await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Imagem recebida'),
+                content: const Text(
+                  'Analise o print no aparelho para encontrar a data de início, ou guarde a imagem nos favoritos.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancelar'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, 'save'),
+                    child: const Text('Salvar imagem'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, 'ocr'),
+                    child: const Text('Analisar imagem'),
+                  ),
+                ],
+              ),
+            );
+            if (!mounted) return;
+            if (choice == 'ocr') {
+              widget.app.selectTab(Tabs.saved);
+              await analyzeImage(context, widget.app, file);
+            } else if (choice == 'save') {
               await editBookmark(
                 context,
                 widget.app,
@@ -99,6 +130,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 localFile: file,
                 suggestedName: 'Imagem compartilhada',
               );
+            } else {
+              await NativeBridge.deleteImage(file);
             }
             continue;
           }
@@ -144,7 +177,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               await copyLink(context, uri.toString());
             }
             if (choice == 'save' && mounted) {
-              await editBookmark(context, widget.app, uri: uri);
+              await saveCurrentReference(context, widget.app, uri);
             }
           }
         }
@@ -173,14 +206,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       });
     }
     return PopScope(
-      canPop: app.tab == 0,
+      canPop: app.tab == Tabs.explore,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (app.tab == 1 &&
+        if (app.tab == Tabs.library &&
             await browserKey.currentState?.handleBack() == true) {
           return;
         }
-        app.selectTab(0);
+        app.selectTab(Tabs.explore);
       },
       child: Scaffold(
         body: IndexedStack(
@@ -197,16 +230,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   : const SizedBox.shrink(),
             ),
             TickerMode(
-              enabled: app.tab == 2,
-              child: FavoritesScreen(app: app),
+              enabled: app.tab == Tabs.saved,
+              child: SavedScreen(app: app),
             ),
             TickerMode(
-              enabled: app.tab == 3,
+              enabled: app.tab == Tabs.settings,
               child: SettingsScreen(app: app),
             ),
           ],
         ),
-        bottomNavigationBar: app.fullscreen
+        bottomNavigationBar: app.libraryChromeHidden
             ? null
             : NavigationBar(
                 selectedIndex: app.tab,
@@ -228,12 +261,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   NavigationDestination(
                     icon: Icon(Icons.bookmarks_outlined),
                     selectedIcon: Icon(Icons.bookmarks_rounded),
-                    label: 'Favoritos',
+                    label: 'Salvos',
                   ),
                   NavigationDestination(
                     icon: Icon(Icons.tune_outlined),
                     selectedIcon: Icon(Icons.tune_rounded),
-                    label: 'Configurações',
+                    label: 'Ajustes',
                   ),
                 ],
               ),

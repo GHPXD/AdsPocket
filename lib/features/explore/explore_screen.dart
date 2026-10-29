@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_controller.dart';
 import '../../core/meta_ads_library_url_builder.dart';
 import '../../core/widgets.dart';
+import '../browser/filter_chips.dart';
 import '../../data/models.dart';
 import '../favorites/bookmark_editor.dart';
 import '../history/history_screen.dart';
@@ -53,56 +54,36 @@ class _ExploreScreenState extends State<ExploreScreen> {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF818CF8), Color(0xFF4F46E5)],
-                      ),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: const Icon(
-                      Icons.layers_rounded,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
+                  Icon(Icons.layers_rounded, color: colors.primary, size: 26),
+                  const SizedBox(width: 10),
                   const Expanded(
                     child: Text(
                       'AdsPocket',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 23,
+                        fontSize: 20,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: -.7,
+                        letterSpacing: -.5,
                       ),
                     ),
                   ),
                   IconButton(
                     tooltip: 'Configurações',
-                    onPressed: () => app.selectTab(3),
+                    onPressed: () => app.selectTab(Tabs.settings),
                     icon: const Icon(Icons.tune_rounded),
                   ),
                 ],
               ),
-              const SizedBox(height: 34),
+              const SizedBox(height: 28),
               Text(
-                'Sua próxima ideia\ncomeça aqui.',
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                'O que vamos pesquisar?',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -.8,
-                  height: 1.18,
+                  letterSpacing: -.5,
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Sua biblioteca de anúncios no bolso.',
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 16),
-              ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(18),
@@ -154,71 +135,49 @@ class _ExploreScreenState extends State<ExploreScreen> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final filters = [
-                            DropdownButtonFormField<String>(
-                              key: ValueKey(
-                                'country:${country ?? app.settings.country}',
-                              ),
-                              initialValue: country ?? app.settings.country,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'País',
-                              ),
-                              items: countries.entries
-                                  .map(
-                                    (v) => DropdownMenuItem(
-                                      value: v.key,
-                                      child: Text(
-                                        v.value,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) => setState(() => country = v),
+                      // Filters chosen before the search; age and "only
+                      // active" are applied by the Library assistant.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _pill<String>(
+                            Icons.public_rounded,
+                            country ?? app.settings.country,
+                            countries,
+                            (v) => setState(() => country = v),
+                          ),
+                          _pill<String>(
+                            Icons.circle_outlined,
+                            status ?? app.settings.status,
+                            const {'active': 'Ativos', 'all': 'Todos'},
+                            (v) => setState(() => status = v),
+                          ),
+                          _pill<String>(
+                            Icons.perm_media_outlined,
+                            app.settings.media,
+                            const {
+                              'all': 'Todas as mídias',
+                              'image': 'Imagem',
+                              'video': 'Vídeo',
+                            },
+                            (v) => _setting(app.settings.copyWith(media: v)),
+                          ),
+                          daysChip(
+                            value: app.settings.minDays,
+                            long: true,
+                            onChanged: (v) => _setting(
+                              app.settings.copyWith(minDays: () => v),
                             ),
-                            DropdownButtonFormField<String>(
-                              key: ValueKey(
-                                'status:${status ?? app.settings.status}',
-                              ),
-                              initialValue: status ?? app.settings.status,
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Status',
-                              ),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'active',
-                                  child: Text('Ativos'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'all',
-                                  child: Text('Todos disponíveis'),
-                                ),
-                              ],
-                              onChanged: (v) => setState(() => status = v),
+                          ),
+                          adsChip(
+                            value: app.settings.minAds,
+                            long: true,
+                            onChanged: (v) => _setting(
+                              app.settings.copyWith(minAds: () => v),
                             ),
-                          ];
-                          return constraints.maxWidth > 360 &&
-                                  MediaQuery.textScalerOf(context).scale(1) <
-                                      1.5
-                              ? Row(
-                                  children: [
-                                    Expanded(child: filters[0]),
-                                    const SizedBox(width: 12),
-                                    Expanded(child: filters[1]),
-                                  ],
-                                )
-                              : Column(
-                                  children: [
-                                    filters[0],
-                                    const SizedBox(height: 12),
-                                    filters[1],
-                                  ],
-                                );
-                        },
+                          ),
+                        ],
                       ),
                       if (type == SearchType.advertiser) ...[
                         const SizedBox(height: 12),
@@ -273,29 +232,47 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     )
                     .toList(),
               ),
-              if (app.lastAdvertiser != null) ...[
+              if (app.lastAdvertiser != null || app.initialSearch != null) ...[
                 const SizedBox(height: 24),
                 const SectionTitle('Continue de onde parou'),
                 const SizedBox(height: 12),
                 Card(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 8,
-                    ),
-                    leading: Icon(
-                      Icons.storefront_rounded,
-                      color: colors.primary,
-                    ),
-                    title: const Text('Última Página visitada'),
-                    subtitle: Text(
-                      'Page ID ${MetaAdsLibraryUrlBuilder.pageId(app.lastAdvertiser!)}',
-                    ),
-                    trailing: const Icon(Icons.arrow_forward_rounded),
-                    onTap: () => runGuarded(
-                      context,
-                      () => app.openLibrary(app.lastAdvertiser!),
-                    ),
+                  child: Column(
+                    children: [
+                      if (app.initialSearch != null)
+                        ListTile(
+                          leading: Icon(
+                            Icons.manage_search_rounded,
+                            color: colors.primary,
+                          ),
+                          title: const Text('Última pesquisa'),
+                          subtitle: Text(
+                            app.initialSearch!.queryParameters['q'] ??
+                                'Biblioteca',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_rounded),
+                          onTap: () => runGuarded(
+                            context,
+                            () => app.openLibrary(app.initialSearch!),
+                          ),
+                        ),
+                      if (app.lastAdvertiser != null)
+                        ListTile(
+                          leading: Icon(
+                            Icons.storefront_rounded,
+                            color: colors.primary,
+                          ),
+                          title: const Text('Última Página visitada'),
+                          subtitle: Text(_pageLabel(app)),
+                          trailing: const Icon(Icons.arrow_forward_rounded),
+                          onTap: () => runGuarded(
+                            context,
+                            () => app.openLibrary(app.lastAdvertiser!),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -375,6 +352,33 @@ class _ExploreScreenState extends State<ExploreScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _setting(UserSettings value) =>
+      runGuarded(context, () => widget.app.updateSettings(value));
+
+  Widget _pill<T>(
+    IconData icon,
+    T value,
+    Map<T, String> options,
+    ValueChanged<T> onSelected,
+  ) => PopupMenuButton<T>(
+    initialValue: value,
+    onSelected: onSelected,
+    itemBuilder: (_) => [
+      for (final e in options.entries)
+        PopupMenuItem(value: e.key, child: Text(e.value)),
+    ],
+    child: Chip(
+      avatar: Icon(icon, size: 18),
+      label: Text(options[value] ?? '$value'),
+    ),
+  );
+
+  String _pageLabel(AppController app) {
+    final id = MetaAdsLibraryUrlBuilder.pageId(app.lastAdvertiser!)!;
+    final saved = app.savedAdvertiser(id);
+    return saved == null ? 'Page ID $id' : '${saved.name} · Page ID $id';
   }
 
   Future<void> _editShortcuts() async {

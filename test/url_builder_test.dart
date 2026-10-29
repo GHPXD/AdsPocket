@@ -48,6 +48,8 @@ void main() {
     'http://www.facebook.com/ads/library/',
     'javascript:alert(1)',
     'https://facebook.com.evil.com/ads/library/',
+    'https://web.facebook.com.evil.com/ads/library/',
+    'https://webfacebook.com/ads/library/',
     'https://evilfacebook.com/ads/library/',
     'https://facebook.com@evil.com/ads/library/',
     'https://www.facebook.com/ads/libraryevil/',
@@ -109,4 +111,56 @@ void main() {
       );
     },
   );
+  test('Page ID from a tapped advertiser profile link', () {
+    String? id(String s) =>
+        MetaAdsLibraryUrlBuilder.profilePageId(Uri.parse(s));
+    expect(id('https://web.facebook.com/61569677676829/'), '61569677676829');
+    expect(id('https://www.facebook.com/profile.php?id=1234567'), '1234567');
+    expect(id('https://web.facebook.com/solides.rhportal/'), isNull);
+    expect(id('https://evil.com/61569677676829/'), isNull);
+    expect(id('http://www.facebook.com/61569677676829/'), isNull);
+    expect(id('https://www.facebook.com/61569677676829/posts/1'), isNull);
+    expect(id('https://www.facebook.com/profile.php?id=1&id=2'), isNull);
+  });
+
+  test('same view survives Meta URL rewrites', () {
+    final typed = builder.build(text: 'planilha  financeira');
+    final rewritten = Uri.parse(
+      'https://web.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR&is_targeted_country=false&media_type=all&q=planilha%20financeira&search_type=keyword_unordered&sort_data[mode]=total_impressions',
+    );
+    expect(MetaAdsLibraryUrlBuilder.sameView(typed, rewritten), isTrue);
+    expect(
+      MetaAdsLibraryUrlBuilder.sameView(
+        typed,
+        builder.build(text: 'planilha financeira', country: 'US'),
+      ),
+      isFalse,
+    );
+    expect(
+      MetaAdsLibraryUrlBuilder.sameView(typed, builder.build(text: 'curso')),
+      isFalse,
+    );
+    final page = builder.build(text: '123', type: SearchType.pageId);
+    expect(
+      MetaAdsLibraryUrlBuilder.sameView(
+        page,
+        Uri.parse(
+          'https://web.facebook.com/ads/library/?view_all_page_id=123&sort_data[mode]=x',
+        ),
+      ),
+      isTrue,
+    );
+    expect(MetaAdsLibraryUrlBuilder.sameView(page, typed), isFalse);
+  });
+
+  test('Meta regional redirect host is the same Library', () {
+    final redirect = Uri.parse(
+      'https://web.facebook.com/ads/library/?q=planilha&country=BR&_rdc=1&_rdr',
+    );
+    expect(MetaAdsLibraryUrlBuilder.isLibrary(redirect), isTrue);
+    expect(
+      MetaAdsLibraryUrlBuilder.canonical(redirect),
+      startsWith('https://www.facebook.com/ads/library/'),
+    );
+  });
 }

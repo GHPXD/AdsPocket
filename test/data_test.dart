@@ -118,7 +118,8 @@ void main() {
     () {
       expect(() => BackupService.decode('garbage'), throwsFormatException);
       for (final mutate in <void Function(Map<String, dynamic>)>[
-        (j) => j['version'] = 2,
+        (j) => j['version'] = 3,
+        (j) => j['version'] = 0,
         (j) => j['version'] = 1.0,
         (j) => j['bookmarks'][0]['url'] = 'javascript:alert(1)',
         (j) => j['bookmarks'][0]['pageId'] = '999',

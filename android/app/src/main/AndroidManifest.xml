@@ -25,6 +25,7 @@
                 <data android:scheme="https" android:host="www.facebook.com" android:pathPrefix="/ads/library"/>
                 <data android:scheme="https" android:host="facebook.com" android:pathPrefix="/ads/library"/>
                 <data android:scheme="https" android:host="m.facebook.com" android:pathPrefix="/ads/library"/>
+                <data android:scheme="https" android:host="web.facebook.com" android:pathPrefix="/ads/library"/>
             </intent-filter>
         </activity>
         <meta-data android:name="flutterEmbedding" android:value="2"/>

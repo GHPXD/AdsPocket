@@ -2,27 +2,50 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../core/longevity.dart';
 import '../core/meta_ads_library_url_builder.dart';
 import '../core/native_bridge.dart';
+import '../core/ocr_engine.dart';
 import '../data/backup_service.dart';
 import '../data/local_repository.dart';
 import '../data/models.dart';
+import '../data/offer.dart';
+
+const appVersion = '1.1.0';
+
+/// Tab indexes of the app shell.
+abstract final class Tabs {
+  static const explore = 0, library = 1, saved = 2, settings = 3;
+}
 
 class AppController extends ChangeNotifier {
   AppController(this.repository, this.preferences);
   final LocalRepository repository;
   final SharedPreferences preferences;
+
+  /// Replaceable in tests; the default runs ML Kit on the device.
+  OcrEngine ocr = MlKitOcrEngine();
   UserSettings settings = const UserSettings();
   List<Bookmark> bookmarks = [];
   List<SearchHistory> history = [];
-  int tab = 0;
+  List<Offer> offers = [];
+  int tab = Tabs.explore;
   Uri currentUrl = MetaAdsLibraryUrlBuilder.home;
+
+  /// Latest search results page (from Explore or typed inside the Library).
   Uri? initialSearch;
   Uri? lastAdvertiser;
   bool browserStarted = false;
+
+  /// Media fullscreen requested by the website.
   bool fullscreen = false;
   int navigationSerial = 0;
   String? notice;
+
+  /// True when the Library hides the app navigation bar.
+  bool get libraryChromeHidden =>
+      tab == Tabs.library &&
+      (fullscreen || settings.immersive || settings.viewMode == ViewMode.feed);
 
   Future<void> initialize() async {
     final saved = preferences.getString('settings.v1');
@@ -35,26 +58,34 @@ class AppController extends ChangeNotifier {
         notice = 'As configurações foram restauradas para o padrão.';
       }
     }
-    final last = preferences.getString('lastAdvertiser');
-    if (last != null) {
-      try {
-        lastAdvertiser = MetaAdsLibraryUrlBuilder.validateLibrary(last);
-      } catch (_) {
-        /* Ignore invalid saved URL. */
-      }
+    lastAdvertiser = _savedUrl('lastAdvertiser');
+    initialSearch = _savedUrl('lastSearch');
+    if (settings.restoreSession) {
+      currentUrl = _savedUrl('lastUrl') ?? initialSearch ?? currentUrl;
     }
     await refresh();
+  }
+
+  Uri? _savedUrl(String key) {
+    final value = preferences.getString(key);
+    if (value == null) return null;
+    try {
+      return MetaAdsLibraryUrlBuilder.validateLibrary(value);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> refresh() async {
     bookmarks = await repository.bookmarks();
     history = await repository.history();
+    offers = await repository.offers();
     notifyListeners();
   }
 
   void selectTab(int index) {
     tab = index;
-    if (index == 1) browserStarted = true;
+    if (index == Tabs.library) browserStarted = true;
     notifyListeners();
   }
 
@@ -83,6 +114,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setImmersive(bool value) =>
+      updateSettings(settings.copyWith(immersive: value));
+
   Future<void> search(
     String text,
     SearchType type,
@@ -94,6 +128,7 @@ class AppController extends ChangeNotifier {
       type: type,
       country: country,
       status: status,
+      media: settings.media,
     );
     await repository.record(
       SearchHistory(
@@ -106,13 +141,18 @@ class AppController extends ChangeNotifier {
         visitedAt: DateTime.now().toUtc(),
       ),
     );
-    initialSearch = uri;
+    if (MetaAdsLibraryUrlBuilder.pageId(uri) == null) await _setSearch(uri);
     if (type == SearchType.advertiser) {
       notice =
           'Selecione a Página nos controles oficiais da Meta. O nome não identifica uma Página de forma única.';
     }
     await refresh();
     await openLibrary(uri);
+  }
+
+  Future<void> _setSearch(Uri uri) async {
+    initialSearch = uri;
+    await preferences.setString('lastSearch', uri.toString());
   }
 
   Future<void> openLibrary(Uri uri) async {
@@ -123,7 +163,7 @@ class AppController extends ChangeNotifier {
     }
     currentUrl = uri;
     browserStarted = true;
-    tab = 1;
+    tab = Tabs.library;
     navigationSerial++;
     await observeUrl(uri);
     notifyListeners();
@@ -132,9 +172,13 @@ class AppController extends ChangeNotifier {
   Future<void> observeUrl(Uri uri) async {
     if (!MetaAdsLibraryUrlBuilder.isLibrary(uri)) return;
     currentUrl = uri;
+    await preferences.setString('lastUrl', uri.toString());
     if (MetaAdsLibraryUrlBuilder.pageId(uri) != null) {
       lastAdvertiser = uri;
       await preferences.setString('lastAdvertiser', uri.toString());
+    } else if ((uri.queryParameters['q'] ?? '').isNotEmpty) {
+      // Searches typed inside Meta's own controls become the return point.
+      await _setSearch(uri);
     }
     notifyListeners();
   }
@@ -168,10 +212,21 @@ class AppController extends ChangeNotifier {
 
   Future<void> repeat(SearchHistory h) =>
       search(h.query, h.type, h.country, h.status);
-  Future<void> save(Bookmark b) async {
-    await repository.saveBookmark(b);
+
+  /// Returns false when the same reference is already saved.
+  Future<bool> save(Bookmark b) async {
+    final saved = await repository.saveBookmark(b);
     await refresh();
+    return saved;
   }
+
+  /// IDs taken from profile links and tried as Page IDs. Live tests showed
+  /// they can differ from the Library Page ID, so saving one warns the user.
+  final unverifiedPageIds = <String>{};
+
+  Bookmark? savedAdvertiser(String pageId) => bookmarks
+      .where((b) => b.kind == BookmarkKind.advertiser && b.pageId == pageId)
+      .firstOrNull;
 
   Future<void> remove(Bookmark b) async {
     await repository.deleteBookmark(b.id);
@@ -197,15 +252,69 @@ class AppController extends ChangeNotifier {
     } else if (b.kind != BookmarkKind.image) {
       await openLibrary(Uri.parse(b.url));
     }
-    await save(b.copyWith(lastVisitedAt: DateTime.now().toUtc()));
+    final now = DateTime.now().toUtc();
+    if (b.kind == BookmarkKind.advertiser) {
+      await repository.recordVisit(b.id, now);
+    }
+    await save(b.copyWith(lastVisitedAt: now));
   }
 
-  String exportBackup() => BackupService.encode(bookmarks, history, settings);
+  Future<List<DateTime>> visits(Bookmark b) => repository.visits(b.id);
+
+  /// Keeps the result count Meta showed for a saved advertiser's Page.
+  Future<void> noteMetaCount(String pageId, String count) async {
+    final b = savedAdvertiser(pageId);
+    if (b == null || count.isEmpty || count.length > 20) return;
+    final now = DateTime.now().toUtc();
+    final same =
+        b.metaAdCount == count &&
+        b.metaAdCountAt != null &&
+        now.difference(b.metaAdCountAt!).inHours < 6;
+    if (!same) {
+      await save(b.copyWith(metaAdCount: count, metaAdCountAt: now));
+    }
+  }
+
+  Set<String> get savedAdIds => {
+    for (final o in offers)
+      if (o.adId != null) o.adId!,
+  };
+
+  Future<void> saveOffer(Offer o) async {
+    await repository.saveOffer(o);
+    await refresh();
+  }
+
+  Future<void> deleteOffer(Offer o) async {
+    await repository.deleteOffer(o.id);
+    await refresh();
+    final file = o.imageFile;
+    if (file != null &&
+        !offers.any((x) => x.imageFile == file) &&
+        !bookmarks.any((b) => b.localFile == file)) {
+      await NativeBridge.deleteImage(file);
+    }
+  }
+
+  /// "Anúncios salvos no AdsPocket" for a Page; never Meta's own totals.
+  List<Offer> offersForPage(String? pageId) => pageId == null
+      ? <Offer>[]
+      : offers.where((o) => o.pageId == pageId).toList();
+
+  String exportBackup() =>
+      BackupService.encode(bookmarks, history, settings, offers);
+  String exportOffersCsv() => CsvExport.offers(offers, CivilDate.today());
+  String exportBookmarksCsv() => CsvExport.bookmarks(bookmarks);
+
   Future<int> importBackup(
     BackupData backup, {
     bool restoreSettings = false,
   }) async {
-    final count = await repository.merge(backup.bookmarks, backup.history);
+    final count = await repository.merge(
+      backup.bookmarks,
+      backup.history,
+      backup.offers,
+    );
     if (restoreSettings) await updateSettings(backup.settings);
     await refresh();
     return count;
